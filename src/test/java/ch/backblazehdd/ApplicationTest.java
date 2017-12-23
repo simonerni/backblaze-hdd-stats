@@ -1,5 +1,7 @@
 package ch.backblazehdd;
 
+import com.carrotsearch.junitbenchmarks.AbstractBenchmark;
+import com.carrotsearch.junitbenchmarks.BenchmarkOptions;
 import de.siegmar.fastcsv.reader.CsvContainer;
 import de.siegmar.fastcsv.reader.CsvParser;
 import de.siegmar.fastcsv.reader.CsvReader;
@@ -7,18 +9,23 @@ import de.siegmar.fastcsv.reader.CsvRow;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Scanner;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 
-public class ApplicationTest {
+public class ApplicationTest extends AbstractBenchmark {
 
 
     File[] files;
@@ -30,35 +37,34 @@ public class ApplicationTest {
     }
 
 
-    @Test
-    public void parallelStreamRead() throws Exception {
-        long time = System.currentTimeMillis();
-
-        int sum = Stream.of(files).parallel().map(this::countLinesInFile).mapToInt(p -> p).sum();
-
-        System.out.println("Parallel: " + (System.currentTimeMillis() - time));
-        System.out.println("Read lines: " + sum);
-    }
-
+    /**
+     * Round: 6.03 +- 0.2
+     *
+     * @throws Exception
+     */
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void readFileWithScanner() throws Exception {
 
 
         int i = 0;
 
-        long time = System.currentTimeMillis();
-
         for (File file : files) {
-            i+= countLinesInFile(file);
+            i += countLinesInFile(file);
         }
 
-        System.out.println("Scanner: " + (System.currentTimeMillis() - time));
-        System.out.println("Read lines: " + i);
+        assertEquals(5091501, i);
 
     }
 
+    /**
+     * round: 5.72 [+- 0.27]
+     *
+     * @throws Exception
+     */
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
-    public void readFileWithCSVParser(File[] files) throws Exception {
+    public void readFileWithCSVParser() throws Exception {
 
         int i = 0;
 
@@ -84,8 +90,14 @@ public class ApplicationTest {
     }
 
 
+    /**
+     * round: 6.13 [+- 0.24]
+     *
+     * @throws Exception
+     */
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
-    public void readFileWithCSVFastAllAtOnce(File[] files) throws Exception {
+    public void readFileWithCSVFastAllAtOnce() throws Exception {
 
         int i = 0;
 
@@ -108,13 +120,30 @@ public class ApplicationTest {
 
     }
 
-
-
+    /**
+     * round: 0.58 [+- 0.10]
+     *
+     * @throws Exception
+     */
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
-    public void testStream() {
+    public void parallelStreamRead() throws Exception {
+
+        int i = Stream.of(files).parallel().map(this::countLinesInFile).mapToInt(p -> p).sum();
+
+        assertEquals(5091501, i);
+
+    }
+
+    /**
+     * round: 3.27 [+- 0.56]
+     */
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
+    @Test
+    public void parallelStreamMoreThreads() {
 
 
-        final int parallelism = 10;
+        final int parallelism = 16;
 
         ForkJoinPool forkJoinPool = null;
 
@@ -143,6 +172,8 @@ public class ApplicationTest {
 
     }
 
+    //round: 2.12 [+- 0.20]
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void parallelStreamReadCSV() throws Exception {
 
@@ -166,8 +197,32 @@ public class ApplicationTest {
         assertEquals(5091501L, i);
     }
 
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
+    @Test
+    public void parallelCustomThreading() throws Exception {
 
-    private int countLinesInFile(File file) {
+
+        ConcurrentLinkedQueue<File> fileQueue = new ConcurrentLinkedQueue<>();
+
+        AtomicInteger atomicInteger = new AtomicInteger();
+
+        fileQueue.addAll(Arrays.asList(files));
+
+        class MyThread extends Thread {
+            public void run() {
+
+                File file = fileQueue.poll();
+                if (file != null) {
+                    atomicInteger.getAndAdd(countLinesInFile(file));
+                }
+
+            }
+        }
+
+
+    }
+
+    private int countLinesInFileOld(File file) {
         int i = 0;
 
         try {
@@ -186,6 +241,33 @@ public class ApplicationTest {
 
         return i;
 
+    }
+
+    private int countLinesInFile(File file) {
+        int i = 0;
+
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(file));
+
+            //Skip First line (headers)
+            reader.readLine();
+
+            String text;
+
+            do {
+                text = reader.readLine();
+                if (text != null) {
+                    i++;
+                }
+            } while (text != null);
+
+            reader.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return i;
     }
 
 
