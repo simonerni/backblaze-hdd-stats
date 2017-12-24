@@ -128,7 +128,20 @@ public class HardDriveTest {
 
         HardDrive hd = new HardDrive("2013-04-11", "2013-04-13", "MyModel", true);
 
-        assertEquals("2,1,MyModel", hd.getCSVLine());
+        assertEquals("2,1,MyModel,", hd.getCSVLine());
+
+
+
+    }
+
+    @Test
+    public void testCSVLineWithMapping() {
+
+        HardDrive hd = new HardDrive("2013-04-11", "2013-04-13", "MyModel", true);
+
+        ModelMapper.addKnownModel("MyModel", new Model("MyModel", "Simons HDDs"));
+
+        assertEquals("2,1,MyModel,Simons HDDs", hd.getCSVLine());
 
 
 

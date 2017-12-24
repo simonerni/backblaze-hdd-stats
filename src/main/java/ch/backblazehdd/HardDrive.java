@@ -127,7 +127,8 @@ public class HardDrive {
             csvLine.append(0);
         }
 
-        csvLine.append(",").append(this.model);
+        Model model = ModelMapper.getModelAndManufacturerFromModel(this.model);
+        csvLine.append(",").append(model.model).append(",").append(model.manufacturer);
 
         return csvLine.toString();
 

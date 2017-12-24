@@ -64,7 +64,7 @@ public class Application {
     private void outputResultCSV(ConcurrentMap<String, HardDrive> map) throws Exception {
         PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("data.csv")));
 
-        out.println("life,death,model");
+        out.println("life,death,model,manufacturer");
 
         for (HardDrive hardDrive : map.values()) {
             out.println(hardDrive.getCSVLine());
