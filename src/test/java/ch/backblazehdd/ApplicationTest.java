@@ -9,28 +9,72 @@ import de.siegmar.fastcsv.reader.CsvRow;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.hamcrest.MatcherAssert.assertThat;
+import static java.util.stream.Collectors.reducing;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
+@SuppressWarnings("Duplicates")
 public class ApplicationTest extends AbstractBenchmark {
 
 
     File[] files;
+
+    class HardDrive {
+
+        String min = "";
+        String max = "";
+
+        String model = "";
+
+        boolean dead = false;
+
+        HardDrive() {
+        }
+
+        HardDrive(String min, String max) {
+            this.min = min;
+            this.max = max;
+        }
+
+        HardDrive(String line) {
+            this.min = line.substring(0, 10);
+            this.max = this.min;
+
+            int modelStartIndex = line.indexOf(44, 12) + 1;
+            int modelEndIndex = line.indexOf(44, modelStartIndex + 1);
+
+            this.model = line.substring(modelStartIndex, modelEndIndex);
+
+            int deadIndex = line.indexOf(44, modelEndIndex + 1) + 1;
+
+            this.dead = line.charAt(deadIndex) == '1';
+
+        }
+
+        @Override
+        public String toString() {
+            return "HardDrive{" +
+                    "min='" + min + '\'' +
+                    ", max='" + max + '\'' +
+                    ", model='" + model + '\'' +
+                    ", dead=" + dead +
+                    '}';
+        }
+    }
 
     @Before
     public void setUp() throws Exception {
@@ -253,12 +297,237 @@ public class ApplicationTest extends AbstractBenchmark {
     @Test
     public void splitLineV2() {
         String line = "2013-04-10,MJ0351YNG9Z0XA,Hitachi HDS5C3030ALA630,3000592982016,0,,0,,,,,,,,0,,,,,,4031,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,26,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
-        String[] splitted;
         for (int i = 0; i < 21196; i++) {
 
             assertEquals("MJ0351YNG9Z0XA", line.substring(11, line.indexOf(44, 12)));
         }
     }
+
+    // round: 0.52 [+- 0.09]
+    @BenchmarkOptions(benchmarkRounds = 10, warmupRounds = 1)
+    @Test
+    public void lineStreamTest() {
+
+        long i = Stream.of(files).parallel().flatMap(this::getStreamOfLines).count();
+
+        assertEquals(5091501L, i);
+
+
+    }
+
+    // round: 2.80 [+- 0.19]
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
+    @Test
+    public void fullStreamTest() {
+
+
+        ConcurrentMap<String, HardDrive> concurrentMap = Stream
+                .of(files)
+                .parallel()
+                .flatMap(this::getStreamOfLines)
+                .collect(
+                        Collectors.groupingByConcurrent(
+                                this::getIDFromHDD,
+                                ConcurrentSkipListMap::new,
+                                reducing(
+                                        new HardDrive(),
+                                        HardDrive::new,
+                                        this::merge)
+                        ));
+
+
+        System.out.println(concurrentMap.get("S1F032G7"));
+
+    }
+
+    @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
+    @Test
+    public void fullStreamTestMoreThreads() {
+
+
+        final int parallelism = 20;
+
+        ForkJoinPool forkJoinPool = null;
+
+        try {
+            forkJoinPool = new ForkJoinPool(parallelism);
+
+            ConcurrentMap<String, HardDrive> i = forkJoinPool.submit(() ->
+
+                    //parallel stream invoked here
+                    Stream
+                            .of(files)
+                            .parallel()
+                            .flatMap(this::getStreamOfLines)
+                            .collect(
+                                    Collectors.groupingByConcurrent(
+                                            this::getIDFromHDD,
+                                            ConcurrentSkipListMap::new,
+                                            reducing(
+                                                    new HardDrive(),
+                                                    HardDrive::new,
+                                                    this::merge)
+                                    ))
+
+
+            ).get(); //this makes it an overall blocking call
+
+            assertEquals(true, i.get("S1F032G7").dead);
+
+
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        } finally {
+            if (forkJoinPool != null) {
+                forkJoinPool.shutdown(); //always remember to shutdown the pool
+            }
+        }
+
+    }
+
+
+    @Test
+    public void testGetIDFromHDD() {
+        String line = "2013-04-10,6XW0SVS9,ST31500541AS,1500301910016,0,,87406718,,,,,,,,0,,,,,,28428,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,29,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
+
+        String id = this.getIDFromHDD(line);
+
+        assertEquals("ID", "6XW0SVS9", id);
+
+    }
+
+    @Test
+    public void testGetID2FromHDD() {
+        String line = "2013-04-10,WD-WCAU4A648671,WDC WD10EADS,1000204886016,0,,0,,,,,,,,0,,,,,,31475,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,22,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,";
+
+        String id = this.getIDFromHDD(line);
+
+        assertEquals("ID", "WD-WCAU4A648671", id);
+
+    }
+
+
+    public String getIDFromHDD(String line) {
+        return line.substring(11, line.indexOf(44, 12));
+    }
+
+    @Test
+    public void stringCompareEmpty() {
+
+        HardDrive empty = new HardDrive();
+
+        HardDrive date1 = new HardDrive("2013-04-10", "2013-04-10");
+
+
+        HardDrive merged = merge(empty, date1);
+        assertEquals(date1.max, merged.max);
+        assertEquals(date1.min, merged.min);
+
+    }
+
+    @Test
+    public void stringCompareNewMin() {
+
+
+        HardDrive date1 = new HardDrive("2013-04-10", "2013-04-10");
+
+        HardDrive date2 = new HardDrive("2011-04-10", "2013-04-10");
+
+
+        HardDrive merged = merge(date1, date2);
+        assertEquals(date1.max, merged.max);
+        assertEquals(date2.min, merged.min);
+
+    }
+
+    @Test
+    public void stringCompareNewMaxAndMin() {
+
+
+        HardDrive date1 = new HardDrive("2013-04-10", "2015-04-10");
+
+        HardDrive date2 = new HardDrive("2011-04-10", "2013-04-10");
+
+
+        HardDrive merged = merge(date1, date2);
+        assertEquals(date1.max, merged.max);
+        assertEquals(date2.min, merged.min);
+
+    }
+
+    @Test
+    public void mergedModel() {
+
+
+        HardDrive empty = new HardDrive();
+
+        HardDrive hdd = new HardDrive("2013-04-10,9VS3FM1J,ST31500341AS,1500301910016,1,,222508045,,,,,,,,4094,,,,,,26993,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,31,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n");
+
+
+        HardDrive merged = merge(empty, hdd);
+        assertEquals("Max", hdd.max, merged.max);
+        assertEquals("Min", hdd.min, merged.min);
+        assertEquals("Model", hdd.model, merged.model);
+        assertEquals("Death", hdd.dead, merged.dead);
+
+    }
+
+    @Test
+    public void testHardDriveLineParse() {
+
+        String line = "2013-04-10,MJ0351YNG9Z7LA,Hitachi HDS5C3030ALA630,3000592982016,0,,0,,,,,,,,0,,,,,,3593,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,26,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
+
+        HardDrive hardDrive = new HardDrive(line);
+        assertEquals("Minimal Date", "2013-04-10", hardDrive.min);
+        assertEquals("Maximal Date", "2013-04-10", hardDrive.max);
+
+        assertEquals("Model", "Hitachi HDS5C3030ALA630", hardDrive.model);
+
+        assertFalse("Dead", hardDrive.dead);
+
+    }
+
+    @Test
+    public void testHardDriveLineParseDeath() {
+
+        String line = "2013-04-10,9VS3FM1J,ST31500341AS,1500301910016,1,,222508045,,,,,,,,4094,,,,,,26993,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,31,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
+
+        HardDrive hardDrive = new HardDrive(line);
+        assertEquals("Minimal Date", "2013-04-10", hardDrive.min);
+        assertEquals("Maximal Date", "2013-04-10", hardDrive.max);
+
+        assertEquals("Model", "ST31500341AS", hardDrive.model);
+
+        assertTrue("Dead", hardDrive.dead);
+
+    }
+
+    private HardDrive merge(HardDrive date1, HardDrive date2) {
+
+        HardDrive merged = new HardDrive();
+
+        //Compare Min
+
+        if (date1.min.compareTo(date2.min) > 0 || date1.min.equals("")) {
+            merged.min = date2.min;
+        } else {
+            merged.min = date1.min;
+        }
+
+        //Compare Max
+
+        if (date1.max.compareTo(date2.max) < 0) {
+            merged.max = date2.max;
+        } else {
+            merged.max = date1.max;
+        }
+
+        merged.model = date1.model.equals("") ? date2.model : date1.model;
+        merged.dead = date1.dead || date2.dead;
+
+        return merged;
+    }
+
 
     private int countLinesInFileOld(File file) {
         int i = 0;
@@ -280,6 +549,22 @@ public class ApplicationTest extends AbstractBenchmark {
         return i;
 
     }
+
+
+    private Stream<String> getStreamOfLines(File file) {
+
+        try {
+            return Files.lines(Paths.get(file.toURI())).skip(1);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Stream.ofNullable(null);
+        }
+
+    }
+
+    /*private Stream<String> getStreamOfLinesWithBufferedReader(File file) {
+
+    }*/
 
     private int countLinesInFile(File file) {
         int i = 0;
