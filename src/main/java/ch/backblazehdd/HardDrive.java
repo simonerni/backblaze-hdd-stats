@@ -1,5 +1,10 @@
 package ch.backblazehdd;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
+
 /**
  * Implementation for a Hard Drive record, immutable.
  */
@@ -19,6 +24,14 @@ public class HardDrive {
         this.min = min;
         this.max = max;
     }
+
+    public HardDrive(String min, String max, String model, boolean dead) {
+        this.min = min;
+        this.max = max;
+        this.model = model;
+        this.dead = dead;
+    }
+
 
     /**
      * Creates a new Hard Drive from the string representing a line:
@@ -91,6 +104,33 @@ public class HardDrive {
 
     public static String getID(String line) {
         return line.substring(11, line.indexOf(44, 12));
+    }
+
+    public long calculateLife() {
+
+        LocalDate dateMin = LocalDate.parse(this.min);
+        LocalDate dateMax = LocalDate.parse(this.max);
+
+        return Duration.between(dateMin.atStartOfDay(), dateMax.atStartOfDay()).toDays();
+
+    }
+
+    public String getCSVLine() {
+
+        StringBuilder csvLine = new StringBuilder();
+
+        csvLine.append(calculateLife()).append(",");
+
+        if (dead) {
+            csvLine.append(1);
+        } else {
+            csvLine.append(0);
+        }
+
+        csvLine.append(",").append(this.model);
+
+        return csvLine.toString();
+
     }
 
     @Override

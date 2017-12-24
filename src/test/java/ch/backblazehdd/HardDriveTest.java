@@ -123,5 +123,14 @@ public class HardDriveTest {
 
     }
 
+    @Test
+    public void testCSVLine() {
 
+        HardDrive hd = new HardDrive("2013-04-11", "2013-04-13", "MyModel", true);
+
+        assertEquals("2,1,MyModel", hd.getCSVLine());
+
+
+
+    }
 }

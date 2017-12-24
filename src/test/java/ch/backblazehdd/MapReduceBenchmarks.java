@@ -72,43 +72,7 @@ public class MapReduceBenchmarks extends AbstractBenchmark {
     public void fullStreamTestMoreThreads() {
 
 
-        final int parallelism = 8;
 
-        ForkJoinPool forkJoinPool = null;
-
-        try {
-            forkJoinPool = new ForkJoinPool(parallelism);
-
-            ConcurrentMap<String, HardDrive> i = forkJoinPool.submit(() ->
-
-                    //parallel stream invoked here
-                    Stream
-                            .of(files)
-                            .parallel()
-                            .flatMap(this::getStreamOfLines)
-                            .collect(
-                                    Collectors.groupingByConcurrent(
-                                            HardDrive::getID,
-                                            ConcurrentSkipListMap::new,
-                                            reducing(
-                                                    new HardDrive(), // Initial Element
-                                                    HardDrive::new,  // Mapping function
-                                                    HardDrive::new)  // "Merging" function
-                                    ))
-
-
-            ).get(); //this makes it an overall blocking call
-
-            assertEquals(true, i.get("S1F032G7").isDead());
-
-
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-        } finally {
-            if (forkJoinPool != null) {
-                forkJoinPool.shutdown(); //always remember to shutdown the pool
-            }
-        }
 
     }
 
