@@ -3,6 +3,8 @@ package ch.backblazehdd;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -15,7 +17,12 @@ public class Application {
     public static void main(String[] args) throws Exception {
 
         Application application = new Application();
-        application.run();
+        if (args.length != 0) {
+            application.updateManufacturers();
+        } else {
+            application.run();
+        }
+
 
     }
 
@@ -61,7 +68,9 @@ public class Application {
         return null;
     }
 
-    private void outputResultCSV(ConcurrentMap<String, HardDrive> map) throws Exception {
+    private void outputResultCSV(Map<String, HardDrive> map) throws Exception {
+        ModelMapper.initKnownModels(new File("mapping.csv"));
+
         PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("data.csv")));
 
         out.println("life,death,model,manufacturer");
@@ -71,6 +80,32 @@ public class Application {
         }
     }
 
+    protected void updateManufacturers() throws Exception {
+
+        ModelMapper.initKnownModels(new File("mapping.csv"));
+
+        List<String> strings = Files.lines(Paths.get("data.csv")).skip(1).map(line -> {
+
+            String[] data = line.split(",");
+            Model model = ModelMapper.getModelAndManufacturerFromModel(data[2]);
+
+            if (!model.manufacturer.equals("")) {
+                return data[0] + "," + data[1] + "," + model.model + "," + model.manufacturer;
+            } else {
+                return line;
+            }
+
+        }).collect(Collectors.toList());
+
+        PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("data.csv")));
+
+        out.println("life,death,model,manufacturer");
+
+        for (String line : strings) {
+            out.println(line);
+        }
+
+    }
 
     protected void run() throws Exception {
 
