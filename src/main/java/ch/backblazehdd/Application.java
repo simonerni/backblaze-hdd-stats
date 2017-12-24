@@ -78,6 +78,8 @@ public class Application {
         for (HardDrive hardDrive : map.values()) {
             out.println(hardDrive.getCSVLine());
         }
+
+        out.flush();
     }
 
     protected void updateManufacturers() throws Exception {
@@ -104,6 +106,8 @@ public class Application {
         for (String line : strings) {
             out.println(line);
         }
+
+        out.flush();
 
     }
 
