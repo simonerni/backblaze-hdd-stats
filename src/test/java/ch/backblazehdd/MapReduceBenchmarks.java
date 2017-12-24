@@ -115,6 +115,7 @@ public class MapReduceBenchmarks extends AbstractBenchmark {
 
     /**
      * Returns a stream of lines, without the first line.
+     *
      * @param file The file to read.
      * @return A stream of strings, which are lines. When the file is not readable, returns an empty stream.
      */
@@ -128,7 +129,6 @@ public class MapReduceBenchmarks extends AbstractBenchmark {
         }
 
     }
-
 
 
 }
