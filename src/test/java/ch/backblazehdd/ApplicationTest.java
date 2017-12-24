@@ -14,7 +14,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -37,11 +39,7 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
 
-    /**
-     * Round: 6.03 +- 0.2
-     *
-     * @throws Exception
-     */
+    // round: 1.66 [+- 0.06]
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void readFileWithScanner() throws Exception {
@@ -58,7 +56,7 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
     /**
-     * round: 5.72 [+- 0.27]
+     * round: 6.54 [+- 0.35]
      *
      * @throws Exception
      */
@@ -90,11 +88,7 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
 
-    /**
-     * round: 6.13 [+- 0.24]
-     *
-     * @throws Exception
-     */
+    // round: 6.70 [+- 0.50]
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void readFileWithCSVFastAllAtOnce() throws Exception {
@@ -121,7 +115,7 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
     /**
-     * round: 0.58 [+- 0.10]
+     * round: 0.54 [+- 0.04]
      *
      * @throws Exception
      */
@@ -136,7 +130,7 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
     /**
-     * round: 3.27 [+- 0.56]
+     * round: 0.41 [+- 0.02]
      */
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
@@ -172,7 +166,7 @@ public class ApplicationTest extends AbstractBenchmark {
 
     }
 
-    //round: 2.12 [+- 0.20]
+    // round: 3.29 [+- 1.23]
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void parallelStreamReadCSV() throws Exception {
@@ -197,10 +191,12 @@ public class ApplicationTest extends AbstractBenchmark {
         assertEquals(5091501L, i);
     }
 
+    //round: 1.66 [+- 0.06]
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void parallelCustomThreading() throws Exception {
 
+        int parallel = 100;
 
         ConcurrentLinkedQueue<File> fileQueue = new ConcurrentLinkedQueue<>();
 
@@ -212,14 +208,56 @@ public class ApplicationTest extends AbstractBenchmark {
             public void run() {
 
                 File file = fileQueue.poll();
-                if (file != null) {
+                while (file != null) {
+
                     atomicInteger.getAndAdd(countLinesInFile(file));
+
+                    file = fileQueue.poll();
+
                 }
+
 
             }
         }
 
+        List<Thread> threadList = new ArrayList<>(parallel);
+        for (int i = 0; i < parallel; i++) {
+            Thread thread = new MyThread();
+            threadList.add(thread);
+            thread.run();
+        }
 
+        for (Thread thread : threadList) {
+            thread.join();
+        }
+
+        assertEquals(5091501, atomicInteger.get());
+
+
+    }
+
+    // round: 0.10 [+- 0.02]
+    @BenchmarkOptions(benchmarkRounds = 10, warmupRounds = 1)
+    @Test
+    public void splitLine() {
+        String line = "2013-04-10,MJ0351YNG9Z0XA,Hitachi HDS5C3030ALA630,3000592982016,0,,0,,,,,,,,0,,,,,,4031,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,26,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
+        String[] splitted;
+        for (int i = 0; i < 21196; i++) {
+
+            splitted = line.split(",");
+        }
+    }
+
+    // round: 0.00 [+- 0.00]
+    @BenchmarkOptions(benchmarkRounds = 10, warmupRounds = 1)
+    @Test
+    public void splitLineV2() {
+        String line = "2013-04-10,MJ0351YNG9Z0XA,Hitachi HDS5C3030ALA630,3000592982016,0,,0,,,,,,,,0,,,,,,4031,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,26,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
+        String[] splitted;
+        for (int i = 0; i < 21196; i++) {
+
+            assertEquals("MJ0351YNG9Z0XA", line.substring(11, line.indexOf(44, 12)));
+        }
     }
 
     private int countLinesInFileOld(File file) {
