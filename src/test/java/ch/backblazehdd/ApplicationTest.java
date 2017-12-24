@@ -33,49 +33,6 @@ public class ApplicationTest extends AbstractBenchmark {
 
     File[] files;
 
-    class HardDrive {
-
-        String min = "";
-        String max = "";
-
-        String model = "";
-
-        boolean dead = false;
-
-        HardDrive() {
-        }
-
-        HardDrive(String min, String max) {
-            this.min = min;
-            this.max = max;
-        }
-
-        HardDrive(String line) {
-            this.min = line.substring(0, 10);
-            this.max = this.min;
-
-            int modelStartIndex = line.indexOf(44, 12) + 1;
-            int modelEndIndex = line.indexOf(44, modelStartIndex + 1);
-
-            this.model = line.substring(modelStartIndex, modelEndIndex);
-
-            int deadIndex = line.indexOf(44, modelEndIndex + 1) + 1;
-
-            this.dead = line.charAt(deadIndex) == '1';
-
-        }
-
-        @Override
-        public String toString() {
-            return "HardDrive{" +
-                    "min='" + min + '\'' +
-                    ", max='" + max + '\'' +
-                    ", model='" + model + '\'' +
-                    ", dead=" + dead +
-                    '}';
-        }
-    }
-
     @Before
     public void setUp() throws Exception {
         File folder = new File("/Users/simon/Documents/dev/backblaze-hdd-stats/data");
@@ -332,7 +289,7 @@ public class ApplicationTest extends AbstractBenchmark {
                                 reducing(
                                         new HardDrive(),
                                         HardDrive::new,
-                                        this::merge)
+                                        HardDrive::new)
                         ));
 
 
@@ -340,12 +297,13 @@ public class ApplicationTest extends AbstractBenchmark {
 
     }
 
+    // round: 1.78 [+- 0.18]
     @BenchmarkOptions(benchmarkRounds = 5, warmupRounds = 1)
     @Test
     public void fullStreamTestMoreThreads() {
 
 
-        final int parallelism = 20;
+        final int parallelism = 8;
 
         ForkJoinPool forkJoinPool = null;
 
@@ -364,15 +322,15 @@ public class ApplicationTest extends AbstractBenchmark {
                                             this::getIDFromHDD,
                                             ConcurrentSkipListMap::new,
                                             reducing(
-                                                    new HardDrive(),
-                                                    HardDrive::new,
-                                                    this::merge)
+                                                    new HardDrive(), // Initial Element
+                                                    HardDrive::new,  // Mapping function
+                                                    HardDrive::new)  // "Merging" function
                                     ))
 
 
             ).get(); //this makes it an overall blocking call
 
-            assertEquals(true, i.get("S1F032G7").dead);
+            assertEquals(true, i.get("S1F032G7").isDead());
 
 
         } catch (InterruptedException | ExecutionException e) {
@@ -419,9 +377,9 @@ public class ApplicationTest extends AbstractBenchmark {
         HardDrive date1 = new HardDrive("2013-04-10", "2013-04-10");
 
 
-        HardDrive merged = merge(empty, date1);
-        assertEquals(date1.max, merged.max);
-        assertEquals(date1.min, merged.min);
+        HardDrive merged = new HardDrive(empty, date1);
+        assertEquals(date1.getMax(), merged.getMax());
+        assertEquals(date1.getMin(), merged.getMin());
 
     }
 
@@ -434,9 +392,9 @@ public class ApplicationTest extends AbstractBenchmark {
         HardDrive date2 = new HardDrive("2011-04-10", "2013-04-10");
 
 
-        HardDrive merged = merge(date1, date2);
-        assertEquals(date1.max, merged.max);
-        assertEquals(date2.min, merged.min);
+        HardDrive merged = new HardDrive(date1, date2);
+        assertEquals(date1.getMax(), merged.getMax());
+        assertEquals(date2.getMin(), merged.getMin());
 
     }
 
@@ -449,9 +407,9 @@ public class ApplicationTest extends AbstractBenchmark {
         HardDrive date2 = new HardDrive("2011-04-10", "2013-04-10");
 
 
-        HardDrive merged = merge(date1, date2);
-        assertEquals(date1.max, merged.max);
-        assertEquals(date2.min, merged.min);
+        HardDrive merged = new HardDrive(date1, date2);
+        assertEquals(date1.getMax(), merged.getMax());
+        assertEquals(date2.getMin(), merged.getMin());
 
     }
 
@@ -464,11 +422,11 @@ public class ApplicationTest extends AbstractBenchmark {
         HardDrive hdd = new HardDrive("2013-04-10,9VS3FM1J,ST31500341AS,1500301910016,1,,222508045,,,,,,,,4094,,,,,,26993,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,31,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n");
 
 
-        HardDrive merged = merge(empty, hdd);
-        assertEquals("Max", hdd.max, merged.max);
-        assertEquals("Min", hdd.min, merged.min);
-        assertEquals("Model", hdd.model, merged.model);
-        assertEquals("Death", hdd.dead, merged.dead);
+        HardDrive merged = new HardDrive(empty, hdd);
+        assertEquals("Max", hdd.getMax(), merged.getMax());
+        assertEquals("Min", hdd.getMin(), merged.getMin());
+        assertEquals("Model", hdd.getModel(), merged.getModel());
+        assertEquals("Death", hdd.isDead(), merged.isDead());
 
     }
 
@@ -478,12 +436,12 @@ public class ApplicationTest extends AbstractBenchmark {
         String line = "2013-04-10,MJ0351YNG9Z7LA,Hitachi HDS5C3030ALA630,3000592982016,0,,0,,,,,,,,0,,,,,,3593,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,26,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
 
         HardDrive hardDrive = new HardDrive(line);
-        assertEquals("Minimal Date", "2013-04-10", hardDrive.min);
-        assertEquals("Maximal Date", "2013-04-10", hardDrive.max);
+        assertEquals("Minimal Date", "2013-04-10", hardDrive.getMin());
+        assertEquals("Maximal Date", "2013-04-10", hardDrive.getMax());
 
-        assertEquals("Model", "Hitachi HDS5C3030ALA630", hardDrive.model);
+        assertEquals("Model", "Hitachi HDS5C3030ALA630", hardDrive.getModel());
 
-        assertFalse("Dead", hardDrive.dead);
+        assertFalse("Dead", hardDrive.isDead());
 
     }
 
@@ -493,42 +451,23 @@ public class ApplicationTest extends AbstractBenchmark {
         String line = "2013-04-10,9VS3FM1J,ST31500341AS,1500301910016,1,,222508045,,,,,,,,4094,,,,,,26993,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,31,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n";
 
         HardDrive hardDrive = new HardDrive(line);
-        assertEquals("Minimal Date", "2013-04-10", hardDrive.min);
-        assertEquals("Maximal Date", "2013-04-10", hardDrive.max);
+        assertEquals("Minimal Date", "2013-04-10", hardDrive.getMin());
+        assertEquals("Maximal Date", "2013-04-10", hardDrive.getMax());
 
-        assertEquals("Model", "ST31500341AS", hardDrive.model);
+        assertEquals("Model", "ST31500341AS", hardDrive.getModel());
 
-        assertTrue("Dead", hardDrive.dead);
+        assertTrue("Dead", hardDrive.isDead());
 
     }
 
-    private HardDrive merge(HardDrive date1, HardDrive date2) {
-
-        HardDrive merged = new HardDrive();
-
-        //Compare Min
-
-        if (date1.min.compareTo(date2.min) > 0 || date1.min.equals("")) {
-            merged.min = date2.min;
-        } else {
-            merged.min = date1.min;
-        }
-
-        //Compare Max
-
-        if (date1.max.compareTo(date2.max) < 0) {
-            merged.max = date2.max;
-        } else {
-            merged.max = date1.max;
-        }
-
-        merged.model = date1.model.equals("") ? date2.model : date1.model;
-        merged.dead = date1.dead || date2.dead;
-
-        return merged;
-    }
 
 
+    /**
+     * This method has been too slow, that's why I discarded it.
+     *
+     * @param file The file to read.
+     * @return The number of lines (-1), skipping the first line.
+     */
     private int countLinesInFileOld(File file) {
         int i = 0;
 
@@ -551,6 +490,11 @@ public class ApplicationTest extends AbstractBenchmark {
     }
 
 
+    /**
+     * Returns a stream of lines, without the first line.
+     * @param file The file to read.
+     * @return A stream of strings, which are lines. When the file is not readable, returns an empty stream.
+     */
     private Stream<String> getStreamOfLines(File file) {
 
         try {
@@ -562,10 +506,13 @@ public class ApplicationTest extends AbstractBenchmark {
 
     }
 
-    /*private Stream<String> getStreamOfLinesWithBufferedReader(File file) {
 
-    }*/
-
+    /**
+     * Currently fastest implementation of counting lines in a file without using streams.
+     *
+     * @param file The file to read in.
+     * @return The count of lines, -1 (without the header in CSV files).
+     */
     private int countLinesInFile(File file) {
         int i = 0;
 
