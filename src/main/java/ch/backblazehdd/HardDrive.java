@@ -89,6 +89,10 @@ public class HardDrive {
         return dead;
     }
 
+    public static String getID(String line) {
+        return line.substring(11, line.indexOf(44, 12));
+    }
+
     @Override
     public String toString() {
         return "HardDrive{" +
