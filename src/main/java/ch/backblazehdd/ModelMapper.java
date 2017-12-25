@@ -23,7 +23,6 @@ public class ModelMapper {
     public static void initKnownModels(File file) throws Exception {
 
         CsvReader csvReader = new CsvReader();
-        csvReader.setContainsHeader(true);
         List<CsvRow> rows = csvReader.read(file, StandardCharsets.UTF_8).getRows();
 
         for(CsvRow row : rows) {
